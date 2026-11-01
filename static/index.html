@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PDF 逐句翻译 · AI 阅读助手</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header id="topbar">
+  <div class="brand">📄 PDF 逐句翻译</div>
+  <label class="btn primary" title="打开 PDF 文件">
+    打开 PDF<input type="file" id="fileInput" accept="application/pdf,.pdf" hidden>
+  </label>
+  <span id="docName" class="doc-name"></span>
+
+  <div class="group" id="zoomGroup">
+    <button class="btn icon" id="zoomOut" title="缩小">−</button>
+    <span id="zoomLabel">125%</span>
+    <button class="btn icon" id="zoomIn" title="放大">＋</button>
+    <button class="btn" id="zoomFit" title="适应宽度">适宽</button>
+    <span id="pageLabel" class="muted"></span>
+  </div>
+
+  <div class="group" id="transGroup">
+    <div class="progress"><div id="progressBar"></div></div>
+    <span id="progressText" class="muted">未开始</span>
+    <button class="btn" id="pauseBtn" disabled>暂停</button>
+    <button class="btn" id="retryBtn" hidden>重试失败项</button>
+  </div>
+
+  <div class="spacer"></div>
+  <select id="viewMode" title="右侧显示方式">
+    <option value="trans">仅译文</option>
+    <option value="bi">原文 + 译文</option>
+  </select>
+  <button class="btn" id="exportBtn" disabled title="导出双语 Markdown">导出</button>
+  <button class="btn" id="chatToggle" title="打开/关闭 AI 助手">🤖 AI 助手</button>
+  <button class="btn" id="settingsBtn" title="设置">⚙ 设置</button>
+</header>
+
+<main id="main">
+  <section id="pdfPane" class="pane">
+    <div id="pdfScroll">
+      <div id="dropHint">
+        <div class="drop-box">
+          <div class="big">📄</div>
+          <div>点击左上角「打开 PDF」，或把 PDF 文件拖到这里</div>
+          <div class="muted small">打开后会自动逐句翻译。用鼠标点击或划选左侧/右侧的文字，另一侧会同步高亮；<br>划选后可以向 AI 提问、请求解释、润色或修改意见。</div>
+        </div>
+      </div>
+      <div id="pdfPages"></div>
+    </div>
+  </section>
+
+  <div class="splitter" data-left="pdfPane" data-right="transPane"></div>
+
+  <section id="transPane" class="pane">
+    <div id="transScroll"><div id="transContent" class="view-trans"></div></div>
+  </section>
+
+  <div class="splitter" id="chatSplitter" data-left="transPane" data-right="chatPane"></div>
+
+  <section id="chatPane" class="pane">
+    <div class="chat-head">
+      <b>🤖 AI 助手</b>
+      <span class="spacer"></span>
+      <button class="btn small" id="chatClear" title="清空对话">清空</button>
+      <button class="btn small icon" id="chatClose" title="关闭">✕</button>
+    </div>
+    <div id="chatMsgs">
+      <div class="chat-tip">在左侧 PDF 或右侧译文中划选文字，点击浮动工具条里的「提问 / 解释 / 润色 / 修改意见」；也可以直接在下方输入问题。</div>
+    </div>
+    <div class="chat-input">
+      <div id="quoteBox" hidden>
+        <div class="quote-text" id="quoteText"></div>
+        <button class="btn small icon" id="quoteClear" title="移除引用">✕</button>
+      </div>
+      <div class="quick">
+        <button class="chip" data-mode="explain">解释</button>
+        <button class="chip" data-mode="polish">润色</button>
+        <button class="chip" data-mode="suggest">修改意见</button>
+        <button class="chip" data-mode="summary">总结</button>
+      </div>
+      <textarea id="chatInput" rows="3" placeholder="输入问题，Enter 发送，Shift+Enter 换行"></textarea>
+      <div class="chat-actions">
+        <span class="muted small" id="chatModel"></span>
+        <span class="spacer"></span>
+        <button class="btn" id="chatStop" hidden>停止</button>
+        <button class="btn primary" id="chatSend">发送</button>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- 划选后出现的浮动工具条 -->
+<div id="selToolbar" hidden>
+  <button data-act="ask">💬 提问</button>
+  <button data-act="explain">📖 解释</button>
+  <button data-act="polish">✨ 润色</button>
+  <button data-act="suggest">📝 修改意见</button>
+  <button data-act="retranslate">🔄 重新翻译</button>
+  <button data-act="copy">📋 复制</button>
+</div>
+
+<!-- 设置 -->
+<dialog id="settingsDlg">
+  <form method="dialog" id="settingsForm">
+    <h3>设置</h3>
+    <fieldset>
+      <legend>大模型接口（OpenAI 兼容格式）</legend>
+      <label>API Base URL
+        <input name="base_url" placeholder="https://api.openai.com/v1" list="baseUrlList">
+        <datalist id="baseUrlList">
+          <option value="https://api.openai.com/v1">OpenAI</option>
+          <option value="https://api.deepseek.com/v1">DeepSeek</option>
+          <option value="https://dashscope.aliyuncs.com/compatible-mode/v1">阿里云百炼 / 通义千问</option>
+          <option value="https://api.moonshot.cn/v1">Moonshot / Kimi</option>
+          <option value="https://open.bigmodel.cn/api/paas/v4">智谱 GLM</option>
+          <option value="https://ark.cn-beijing.volces.com/api/v3">火山方舟 / 豆包</option>
+          <option value="https://api.siliconflow.cn/v1">硅基流动</option>
+          <option value="https://openrouter.ai/api/v1">OpenRouter</option>
+          <option value="http://localhost:11434/v1">Ollama（本地）</option>
+          <option value="http://localhost:8001/v1">vLLM / LM Studio（本地）</option>
+        </datalist>
+      </label>
+      <label>API Key
+        <input name="api_key" type="password" autocomplete="off" placeholder="sk-...（留空表示不修改）">
+      </label>
+      <div class="row">
+        <label>对话模型（问答 / 润色）
+          <input name="model" list="modelList" placeholder="gpt-4o-mini">
+        </label>
+        <label>翻译模型（留空 = 同对话模型）
+          <input name="translate_model" list="modelList" placeholder="">
+        </label>
+        <datalist id="modelList"></datalist>
+      </div>
+      <div class="row">
+        <button type="button" class="btn" id="loadModels">获取模型列表</button>
+        <button type="button" class="btn" id="testConn">测试连接</button>
+        <span id="testResult" class="small"></span>
+      </div>
+    </fieldset>
+    <fieldset>
+      <legend>翻译</legend>
+      <div class="row">
+        <label>目标语言
+          <input name="target_lang" list="langList" placeholder="简体中文">
+          <datalist id="langList">
+            <option value="简体中文"></option><option value="繁體中文"></option>
+            <option value="English"></option><option value="日本語"></option>
+            <option value="한국어"></option><option value="Français"></option>
+            <option value="Deutsch"></option><option value="Español"></option>
+          </datalist>
+        </label>
+        <label>Temperature
+          <input name="temperature" type="number" min="0" max="2" step="0.1">
+        </label>
+      </div>
+      <label>额外翻译要求 / 术语表（可选）
+        <textarea name="translate_instructions" rows="3" placeholder="例如：&#10;LLM -> 大语言模型&#10;agent 保留英文不翻译&#10;译文风格：简洁的学术中文"></textarea>
+      </label>
+      <div class="row">
+        <label>每批句子数 <input name="batch_size" type="number" min="1" max="60"></label>
+        <label>并发请求数 <input name="concurrency" type="number" min="1" max="10"></label>
+      </div>
+    </fieldset>
+    <fieldset>
+      <legend>界面</legend>
+      <label class="check"><input type="checkbox" name="hover_sync"> 鼠标悬停时两侧联动高亮</label>
+      <label class="check"><input type="checkbox" name="scroll_sync"> 滚动 PDF 时译文按页跟随</label>
+      <label class="check"><input type="checkbox" name="auto_translate"> 打开 PDF 后自动开始翻译</label>
+    </fieldset>
+    <div class="dlg-actions">
+      <button type="button" class="btn" id="clearCache" title="删除所有已缓存的译文">清空翻译缓存</button>
+      <span class="spacer"></span>
+      <button value="cancel" class="btn">取消</button>
+      <button value="save" class="btn primary" id="saveSettings">保存</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- 重新翻译 -->
+<dialog id="retransDlg">
+  <form method="dialog">
+    <h3>重新翻译所选句子</h3>
+    <label>额外要求（可选）
+      <input id="retransInstr" placeholder="例如：更口语化 / 术语 X 译为 Y / 更简洁">
+    </label>
+    <div class="dlg-actions">
+      <span class="spacer"></span>
+      <button value="cancel" class="btn">取消</button>
+      <button value="ok" class="btn primary">重新翻译</button>
+    </div>
+  </form>
+</dialog>
+
+<div id="toast" hidden></div>
+
+<script type="module" src="/static/app.js"></script>
+</body>
+</html>
