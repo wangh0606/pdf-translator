@@ -13,6 +13,9 @@
 
 第一次运行会自动创建虚拟环境并安装依赖，然后打开 http://127.0.0.1:8000 。
 
+> **Ubuntu / Debian**：需要先安装 venv 模块：`sudo apt install python3-venv`。
+> 国内网络安装依赖慢的话，可以用镜像：`PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple bash start.sh`
+
 手动启动：
 
 ```bash
